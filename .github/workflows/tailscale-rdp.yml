@@ -1,1 +1,55 @@
+name: RDP via Tailscale
 
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable RDP & Set Password
+        run: |
+          # Aktifkan RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Set password untuk user runneradmin
+          $password = ConvertTo-SecureString "WindowsRDP#2025" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $password
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+          
+          Write-Host "✅ RDP Enabled!" -ForegroundColor Green
+
+      - name: Install & Connect Tailscale
+        run: |
+          Write-Host "📦 Downloading Tailscale..." -ForegroundColor Yellow
+          Invoke-WebRequest -Uri "https://tailscale.com/install/windows/msi/tailscale.msi" -OutFile "tailscale.msi"
+          
+          Write-Host "📦 Installing Tailscale..." -ForegroundColor Yellow
+          Start-Process msiexec.exe -Wait -ArgumentList '/i tailscale.msi /quiet /norestart'
+          
+          Write-Host "🔐 Connecting to Tailscale..." -ForegroundColor Yellow
+          Start-Process -FilePath "C:\Program Files\Tailscale\tailscale.exe" -ArgumentList "up --auth-key ${{ secrets.TAILSCALE_AUTH_KEY }}" -Wait
+          
+          Write-Host ""
+          Write-Host "============================================" -ForegroundColor Green
+          Write-Host "🟢 TAILSCALE RDP IS READY!" -ForegroundColor Green
+          Write-Host "============================================" -ForegroundColor Green
+          
+          # Ambil IP Tailscale
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Host "🌐 IP Address : $ip" -ForegroundColor Yellow
+          Write-Host "👤 Username   : runneradmin" -ForegroundColor Yellow
+          Write-Host "🔑 Password   : WindowsRDP#2025" -ForegroundColor Yellow
+          Write-Host "============================================" -ForegroundColor Green
+          Write-Host "⏳ Server aktif 6 jam. Jangan tutup tab ini!" -ForegroundColor Red
+
+      - name: Keep Alive
+        run: |
+          while ($true) {
+            Start-Sleep -Seconds 300
+            Write-Host "✓ Active - $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Green
+          }
